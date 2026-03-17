@@ -5,6 +5,10 @@ import os
 from groq import Groq
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+
+from setup_rag import setup
+setup()
+
 from guidelines import MODEL_GUIDELINES, VARIANT_INSTRUCTIONS
 from enhancer import enhance_all_variants, score_prompt, compare_scores
 
