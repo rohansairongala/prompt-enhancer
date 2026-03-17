@@ -14,18 +14,38 @@ st.set_page_config(
     layout="wide"
 )
 
+def get_client():
+    if "GROQ_API_KEY" in st.secrets:
+        return Groq(api_key=st.secrets["GROQ_API_KEY"])
+    api_key = st.session_state.get("api_key", "")
+    if api_key:
+        return Groq(api_key=api_key)
+    return None
+
 st.title("✨ AI Prompt Enhancer")
 st.markdown("Transform a rough prompt into an optimised version tailored for your target AI model.")
 st.markdown("---")
 
 with st.sidebar:
-    st.header("Settings")
-    api_key = st.text_input(
-        "Groq API Key",
-        type="password",
-        placeholder="gsk_..."
-    )
-    st.markdown("Get a free key at [console.groq.com](https://console.groq.com)")
+    st.header("About")
+    st.markdown("""
+Paste any rough prompt, select your target AI model,
+and get three optimised versions with before/after quality scores.
+
+**Supported models:**
+Claude · ChatGPT · Gemini · DeepSeek · Grok
+    """)
+    if "GROQ_API_KEY" not in st.secrets:
+        st.markdown("---")
+        st.header("API Key")
+        api_key_input = st.text_input(
+            "Groq API Key",
+            type="password",
+            placeholder="gsk_..."
+        )
+        if api_key_input:
+            st.session_state["api_key"] = api_key_input
+        st.markdown("Get a free key at [console.groq.com](https://console.groq.com)")
     st.markdown("---")
     st.header("How it works")
     st.markdown("""
@@ -52,17 +72,19 @@ with col1:
     )
     model_info = MODEL_GUIDELINES[target_model]["description"]
     st.caption(f"📋 {model_info}")
-
-    enhance_btn = st.button("✨ Enhance my prompt", type="primary", use_container_width=True)
+    enhance_btn = st.button(
+        "✨ Enhance my prompt",
+        type="primary",
+        use_container_width=True
+    )
 
 if enhance_btn:
-    if not api_key:
-        st.error("Please enter your Groq API key in the sidebar.")
+    client = get_client()
+    if not client:
+        st.error("API key not found. Please add your Groq API key in the sidebar.")
     elif not user_prompt.strip():
         st.warning("Please enter a prompt to enhance.")
     else:
-        client = Groq(api_key=api_key)
-
         with st.spinner("Analysing and enhancing your prompt..."):
             before_scores = score_prompt(client, user_prompt)
             variants      = enhance_all_variants(client, user_prompt, target_model)
@@ -87,7 +109,7 @@ if enhance_btn:
         total_before = sum(before_scores.values())
         total_after  = sum(after_scores.values())
         improvement  = total_after - total_before
-        st.info(f"Overall score: {total_before}/40 → {total_after}/40 (+{improvement} points)")
+        st.info(f"Overall: {total_before}/40 → {total_after}/40  (+{improvement} points improvement)")
 
         st.markdown("---")
         st.subheader("✨ Enhanced versions")
@@ -97,20 +119,14 @@ if enhance_btn:
         with tab1:
             st.markdown("**Best for:** Quick tasks, simple instructions")
             st.text_area("", value=variants["concise"], height=200, key="concise")
-            st.button("Copy concise version ↗", key="copy_concise",
-                     on_click=lambda: None)
 
         with tab2:
             st.markdown("**Best for:** Complex tasks, detailed requirements")
             st.text_area("", value=variants["detailed"], height=200, key="detailed")
-            st.button("Copy detailed version ↗", key="copy_detailed",
-                     on_click=lambda: None)
 
         with tab3:
             st.markdown("**Best for:** Structured output, format-specific tasks")
             st.text_area("", value=variants["with_examples"], height=200, key="examples")
-            st.button("Copy examples version ↗", key="copy_examples",
-                     on_click=lambda: None)
 
         st.markdown("---")
         with st.expander("🔍 View original prompt"):
