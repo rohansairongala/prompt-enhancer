@@ -14,6 +14,8 @@ st.set_page_config(
     layout="wide"
 )
 
+INDEX_DIR = os.path.join(os.path.dirname(__file__), "data", "faiss_index")
+
 def get_client():
     if "GROQ_API_KEY" in st.secrets:
         return Groq(api_key=st.secrets["GROQ_API_KEY"])
@@ -22,15 +24,25 @@ def get_client():
         return Groq(api_key=api_key)
     return None
 
+def rag_available():
+    return os.path.exists(os.path.join(INDEX_DIR, "papers.index"))
+
 st.title("✨ AI Prompt Enhancer")
-st.markdown("Transform a rough prompt into an optimised version tailored for your target AI model.")
+st.markdown("Transform a rough prompt into an optimised version — backed by published AI research papers.")
 st.markdown("---")
 
 with st.sidebar:
     st.header("About")
+    rag_status = "✅ Active" if rag_available() else "⚠️ Not available"
+    st.markdown(f"**Research RAG:** {rag_status}")
     st.markdown("""
-Paste any rough prompt, select your target AI model,
-and get three optimised versions with before/after quality scores.
+**Papers used:**
+- Chain-of-Thought Prompting
+- Zero-Shot Reasoners
+- Self-Consistency
+- Tree of Thoughts
+- ReAct
+- Least-to-Most Prompting
 
 **Supported models:**
 Claude · ChatGPT · Gemini · DeepSeek · Grok
@@ -47,23 +59,14 @@ Claude · ChatGPT · Gemini · DeepSeek · Grok
             st.session_state["api_key"] = api_key_input
         st.markdown("Get a free key at [console.groq.com](https://console.groq.com)")
     st.markdown("---")
-    st.header("How it works")
-    st.markdown("""
-1. Paste your rough prompt
-2. Select your target AI model
-3. Click Enhance
-4. Get 3 optimised versions
-5. See before/after quality scores
-    """)
-    st.markdown("---")
-    st.markdown("Built with Groq · LLaMA 3.3 · Streamlit")
+    st.markdown("Built with Groq · LLaMA 3.3 · FAISS · Streamlit")
 
 col1, col2 = st.columns([1, 1])
 
 with col1:
     user_prompt = st.text_area(
         "Your prompt",
-        placeholder="e.g. write me a python function",
+        placeholder="e.g. help me solve a complex math problem",
         height=150
     )
     target_model = st.selectbox(
@@ -78,6 +81,16 @@ with col1:
         use_container_width=True
     )
 
+with col2:
+    st.markdown("**How it works**")
+    st.markdown("""
+1. Your prompt is embedded and matched against research paper chunks
+2. The top 3 most relevant research findings are retrieved
+3. Those findings are injected into the enhancement instruction
+4. The LLM enhances your prompt using both model guidelines and research context
+5. Three variants are returned — concise, detailed, with examples
+    """)
+
 if enhance_btn:
     client = get_client()
     if not client:
@@ -85,9 +98,13 @@ if enhance_btn:
     elif not user_prompt.strip():
         st.warning("Please enter a prompt to enhance.")
     else:
-        with st.spinner("Analysing and enhancing your prompt..."):
+        index_dir = INDEX_DIR if rag_available() else None
+
+        with st.spinner("Retrieving research context and enhancing your prompt..."):
             before_scores = score_prompt(client, user_prompt)
-            variants      = enhance_all_variants(client, user_prompt, target_model)
+            variants      = enhance_all_variants(
+                client, user_prompt, target_model, index_dir
+            )
             best_variant  = variants["detailed"]
             after_scores  = score_prompt(client, best_variant)
             comparison    = compare_scores(before_scores, after_scores)
@@ -98,7 +115,7 @@ if enhance_btn:
         metric_cols = st.columns(4)
         dims = list(comparison.keys())
         for i, dim in enumerate(dims):
-            data = comparison[dim]
+            data  = comparison[dim]
             delta = f"+{data['improvement']}" if data['improvement'] > 0 else str(data['improvement'])
             metric_cols[i].metric(
                 label=dim.capitalize(),
@@ -109,7 +126,12 @@ if enhance_btn:
         total_before = sum(before_scores.values())
         total_after  = sum(after_scores.values())
         improvement  = total_after - total_before
-        st.info(f"Overall: {total_before}/40 → {total_after}/40  (+{improvement} points improvement)")
+        st.info(f"Overall: {total_before}/40 → {total_after}/40  (+{improvement} points)")
+
+        if rag_available():
+            st.caption("✅ Enhancement informed by research papers")
+        else:
+            st.caption("⚠️ Running without RAG — index not found")
 
         st.markdown("---")
         st.subheader("✨ Enhanced versions")
